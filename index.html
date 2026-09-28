@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="KinéCom">
+<title>KinéCom</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    height:100%;height:100dvh;
+    background:#000;
+    overflow:hidden;
+    font-family:-apple-system,'SF Pro Display','Helvetica Neue',system-ui,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+
+  /* ── Permission screen ── */
+  .perm{
+    position:fixed;inset:0;background:#000;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:20px;z-index:100;padding:40px;text-align:center;
+  }
+  .perm.gone{display:none}
+  .perm-mic{
+    width:100px;height:100px;border-radius:50%;
+    background:rgba(255,255,255,0.08);
+    display:grid;place-items:center;
+    margin-bottom:8px;
+  }
+  .perm-mic svg{width:48px;height:48px;fill:rgba(255,255,255,0.7)}
+  .perm h1{color:#fff;font-size:24px;font-weight:700}
+  .perm p{color:rgba(255,255,255,0.4);font-size:15px;line-height:1.5;max-width:300px}
+  .perm-go{
+    margin-top:12px;padding:18px 56px;
+    background:#fff;color:#000;border:none;border-radius:50px;
+    font-size:18px;font-weight:700;cursor:pointer;
+    transition:transform 0.15s;
+  }
+  .perm-go:active{transform:scale(0.95)}
+  .perm-alt{
+    background:none;border:none;color:rgba(255,255,255,0.25);
+    font-size:13px;cursor:pointer;margin-top:4px;
+  }
+
+  /* ── Main display ── */
+  .main{
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+    height:100%;height:100dvh;
+    padding:20px 28px calc(56px + env(safe-area-inset-bottom,0px));
+    overflow:hidden;
+  }
+
+  .prev-zone{
+    color:rgba(255,255,255,0.18);
+    font-weight:600;
+    line-height:1.12;
+    word-break:break-word;
+    overflow:hidden;
+    flex-shrink:1;
+    min-height:0;
+    padding-bottom:16px;
+  }
+
+  .curr-zone{
+    color:#fff;
+    font-weight:800;
+    line-height:1.05;
+    word-break:break-word;
+    flex-shrink:0;
+  }
+  .curr-zone.interim{color:rgba(255,255,255,0.5)}
+  .curr-zone.empty{color:rgba(255,255,255,0.08);font-weight:500}
+
+  /* ── Rec dot — top right ── */
+  .rec-dot{
+    position:fixed;
+    top:calc(14px + env(safe-area-inset-top,0px));
+    right:18px;
+    width:12px;height:12px;border-radius:50%;
+    background:transparent;z-index:10;
+    transition:background 0.3s;
+  }
+  .rec-dot.on{background:#ff3b30;animation:blink 1s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+
+  /* ── Bottom bar — near invisible ── */
+  .bar{
+    position:fixed;bottom:0;left:0;right:0;
+    padding:8px 20px calc(8px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;justify-content:space-between;
+    z-index:20;opacity:0.25;transition:opacity 0.3s;
+  }
+  .bar:hover,.bar:active{opacity:0.8}
+
+  .bar-btn{
+    background:none;border:none;
+    color:rgba(255,255,255,0.5);
+    font-size:11px;font-weight:600;
+    cursor:pointer;padding:10px;font-family:inherit;
+  }
+  .mic-t{
+    width:40px;height:40px;border-radius:50%;
+    border:2px solid rgba(255,255,255,0.15);
+    background:none;color:rgba(255,255,255,0.3);
+    display:grid;place-items:center;cursor:pointer;
+  }
+  .mic-t.on{border-color:#ff3b30;color:#ff3b30;background:rgba(255,59,48,0.08)}
+  .mic-t svg{width:18px;height:18px;fill:currentColor}
+
+  /* ── Keyboard ── */
+  .kb{
+    position:fixed;bottom:0;left:0;right:0;
+    display:none;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+    background:rgba(20,20,20,0.98);
+    border-top:1px solid rgba(255,255,255,0.06);
+    gap:8px;z-index:30;
+  }
+  .kb.show{display:flex}
+  .kb input{
+    flex:1;background:rgba(255,255,255,0.07);
+    border:none;border-radius:12px;padding:14px 16px;
+    color:#fff;font-size:18px;font-weight:600;outline:none;
+  }
+  .kb input::placeholder{color:rgba(255,255,255,0.15)}
+  .kb .go{
+    background:#fff;color:#000;border:none;border-radius:12px;
+    padding:14px 16px;font-size:16px;font-weight:700;cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="perm" id="perm">
+  <div class="perm-mic"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></div>
+  <h1>KinéCom</h1>
+  <p>Communication soignant → patient<br>Transcription vocale en temps réel</p>
+  <button class="perm-go" id="permGo">Démarrer le micro</button>
+  <button class="perm-alt" id="permAlt">Mode clavier</button>
+</div>
+
+<div class="rec-dot" id="recDot"></div>
+
+<div class="main" id="main">
+  <div class="prev-zone" id="prevZ"></div>
+  <div class="curr-zone empty" id="currZ"></div>
+</div>
+
+<div class="bar" id="bar">
+  <button class="bar-btn" onclick="showKB()">clavier</button>
+  <div class="mic-t" id="micT" onclick="toggleMic()"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></div>
+  <button class="bar-btn" onclick="clearAll()">effacer</button>
+</div>
+
+<div class="kb" id="kb">
+  <input type="text" id="kbIn" placeholder="Tapez ou dictez…" autocomplete="off" enterkeyhint="send">
+  <button class="go" id="kbGo">→</button>
+</div>
+
+<script>
+(()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const isSaf=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const mobile=isiOS||isSaf;
+
+  let on=false,rec=null,eng=false,phrases=[],interim='';
+
+  const prevZ=document.getElementById('prevZ');
+  const currZ=document.getElementById('currZ');
+  const recDot=document.getElementById('recDot');
+  const micT=document.getElementById('micT');
+  const perm=document.getElementById('perm');
+  const bar=document.getElementById('bar');
+  const kb=document.getElementById('kb');
+  const kbIn=document.getElementById('kbIn');
+  const mainEl=document.getElementById('main');
+
+  // ══════════════════════════════════════
+  //  AUTO-FIT: text fills available space
+  // ══════════════════════════════════════
+
+  function fitText(){
+    const H=mainEl.clientHeight;
+    const W=mainEl.clientWidth-56;
+    const currH=H*0.62;
+    const prevH=H*0.28;
+    const ct=currZ.textContent||'';
+    const pt=prevZ.textContent||'';
+
+    // Fit current: start at max possible and shrink
+    if(ct){
+      let s=260;
+      currZ.style.fontSize=s+'px';
+      // Binary search for speed
+      let lo=18,hi=Math.min(260,Math.floor(W/1.2));
+      while(lo<hi-1){
+        let mid=Math.floor((lo+hi)/2);
+        currZ.style.fontSize=mid+'px';
+        if(currZ.scrollHeight>currH||currZ.scrollWidth>W+5) hi=mid;
+        else lo=mid;
+      }
+      currZ.style.fontSize=lo+'px';
+    } else {
+      currZ.style.fontSize='40px';
+    }
+
+    // Fit prev: max 38% of current size
+    if(pt){
+      const cSz=parseFloat(currZ.style.fontSize)||60;
+      let s=Math.min(Math.floor(cSz*0.38),90);
+      prevZ.style.fontSize=s+'px';
+      while(s>12&&prevZ.scrollHeight>prevH){s-=2;prevZ.style.fontSize=s+'px';}
+    }
+  }
+
+  let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(fitText,80);});
+
+  // ══════════════
+  //  PERMISSION
+  // ══════════════
+
+  document.getElementById('permGo').addEventListener('click',async()=>{
+    try{
+      const s=await navigator.mediaDevices.getUserMedia({audio:true});
+      s.getTracks().forEach(t=>t.stop());
+      perm.classList.add('gone');
+      startMic();
+    }catch(e){
+      const b=document.getElementById('permGo');
+      b.textContent='Micro refusé — réessayer';
+      b.style.background='#ff3b30';b.style.color='#fff';
+    }
+  });
+  document.getElementById('permAlt').addEventListener('click',()=>{perm.classList.add('gone');showKB();});
+
+  // ══════════════════════════════
+  //  SPEECH ENGINE (iOS resilient)
+  // ══════════════════════════════
+
+  let rt=null,errs=0;
+
+  function mk(){
+    const r=new SR();
+    r.lang='fr-FR';r.interimResults=true;r.maxAlternatives=1;
+    r.continuous=!mobile;
+
+    r.onstart=()=>{eng=true;errs=0;};
+    r.onresult=e=>{
+      let f='',t='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const x=e.results[i][0].transcript;
+        if(e.results[i].isFinal)f+=x;else t+=x;
+      }
+      if(f.trim()){phrases.push(f.trim());interim='';}
+      else interim=t.trim();
+      render();
+    };
+    r.onerror=e=>{
+      eng=false;
+      if(e.error==='not-allowed'||e.error==='service-not-allowed'){stopMic();return;}
+      if(on){errs++;if(errs<6)sch(mobile?400:200);else stopMic();}
+    };
+    r.onend=()=>{
+      eng=false;
+      if(on){
+        if(interim&&mobile){phrases.push(interim);interim='';render();}
+        sch(mobile?300:120);
+      }
+    };
+    return r;
+  }
+
+  function sch(d){clearTimeout(rt);rt=setTimeout(()=>{if(on&&!eng)go();},d);}
+  function go(){try{rec=mk();rec.start();}catch(e){if(on)sch(500);}}
+  function kill(){clearTimeout(rt);if(rec){try{rec.abort();}catch(e){}}rec=null;eng=false;}
+
+  window.toggleMic=()=>{on?stopMic():startMic();};
+
+  function startMic(){
+    if(!SR){showKB();return;}
+    on=true;errs=0;
+    micT.classList.add('on');recDot.classList.add('on');
+    go();
+    if('wakeLock'in navigator)navigator.wakeLock.request('screen').catch(()=>{});
+  }
+  function stopMic(){
+    on=false;micT.classList.remove('on');recDot.classList.remove('on');
+    kill();
+    if(interim){phrases.push(interim);interim='';render();}
+  }
+
+  window.clearAll=()=>{phrases=[];interim='';render();};
+
+  // ══════════
+  //  KEYBOARD
+  // ══════════
+
+  let kk=false;
+  window.showKB=()=>{kk=true;kb.classList.add('show');bar.style.display='none';kbIn.focus();};
+  function hideKB(){kk=false;kb.classList.remove('show');bar.style.display='';}
+  function sendKB(){const v=kbIn.value.trim();if(v){phrases.push(v);kbIn.value='';render();}kbIn.focus();}
+  document.getElementById('kbGo').addEventListener('click',sendKB);
+  kbIn.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendKB();}});
+  mainEl.addEventListener('click',()=>{if(kk)hideKB();});
+
+  // ══════════════════════
+  //  RENDER + FIT
+  // ══════════════════════
+
+  function render(){
+    if(phrases.length>=2&&!interim) prevZ.textContent=phrases[phrases.length-2];
+    else if(phrases.length>=1&&interim) prevZ.textContent=phrases[phrases.length-1];
+    else prevZ.textContent='';
+
+    const txt=interim||(phrases.length?phrases[phrases.length-1]:'');
+    if(txt){
+      currZ.textContent=txt;
+      currZ.className='curr-zone'+(interim?' interim':'');
+    } else {
+      currZ.textContent=on?'Parlez…':'';
+      currZ.className='curr-zone empty';
+    }
+    fitText();
+  }
+
+  // Anti double-tap zoom
+  let lt=0;document.addEventListener('touchstart',e=>{const n=Date.now();if(n-lt<300)e.preventDefault();lt=n;},{passive:false});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&on&&!eng)go();});
+
+  fitText();
+})();
+</script>
+</body>
+</html>
