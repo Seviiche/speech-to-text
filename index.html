@@ -53,6 +53,7 @@
     width:100%;height:100%;height:100dvh;
     padding:20px 22px calc(70px + env(safe-area-inset-bottom,0px)) 22px;
     gap:16px;
+    cursor:pointer;
   }
   #main.visible{display:flex}
 
@@ -73,6 +74,20 @@
   }
   #currentPhrase.interim{color:rgba(255,255,255,0.55)}
   #currentPhrase.placeholder{color:rgba(255,255,255,0.12);font-weight:600}
+
+  /* Tap to restart hint */
+  #tapHint{
+    position:fixed;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    color:rgba(255,255,255,0.25);
+    font-size:16px;font-weight:600;
+    text-align:center;
+    pointer-events:none;
+    opacity:0;transition:opacity 0.5s;
+    z-index:10;
+  }
+  #tapHint.show{opacity:1}
 
   /* ── RECORDING INDICATOR ── */
   #recDot{
@@ -108,7 +123,6 @@
   }
   #bottomBar button:active{background:rgba(255,255,255,0.07)}
 
-  /* Mic button */
   #micBtn{
     width:52px;height:52px;
     border-radius:50%;
@@ -121,32 +135,27 @@
   #micBtn.on{border-color:#ff3b30;background:rgba(255,59,48,0.15);color:#ff3b30}
   #micBtn svg{width:22px;height:22px;fill:currentColor}
 
-  /* Size slider */
   .sizeRow{
     display:flex;align-items:center;gap:6px;
     position:fixed;
     top:calc(10px + env(safe-area-inset-top,0px));
     left:16px;
     z-index:50;
-    opacity:0.35;
-    transition:opacity 0.3s;
+    opacity:0.35;transition:opacity 0.3s;
   }
   .sizeRow:active,.sizeRow:focus-within{opacity:1}
   .sizeRow label{color:#fff;font-size:13px;font-weight:700}
   .sizeRow input[type=range]{
     -webkit-appearance:none;appearance:none;
     width:80px;height:4px;
-    background:rgba(255,255,255,0.2);
-    border-radius:2px;outline:none;
+    background:rgba(255,255,255,0.2);border-radius:2px;outline:none;
   }
   .sizeRow input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none;
-    width:20px;height:20px;
+    -webkit-appearance:none;width:20px;height:20px;
     background:#fff;border-radius:50%;cursor:pointer;
   }
   .sizeRow span{color:#fff;font-size:12px;font-weight:700;min-width:20px;text-align:center}
 
-  /* ── KEYBOARD MODE ── */
   #kbBar{
     position:fixed;bottom:0;left:0;right:0;
     display:none;
@@ -170,7 +179,6 @@
 </head>
 <body>
 
-<!-- ════ START SCREEN ════ -->
 <div id="startScreen">
   <div class="icon">🎤</div>
   <h1>KinéCom</h1>
@@ -179,23 +187,20 @@
   <button class="skip" id="btnKeyboard">Mode clavier</button>
 </div>
 
-<!-- ════ RECORDING DOT ════ -->
 <div id="recDot"></div>
+<div id="tapHint">Tapez l'écran pour relancer le micro</div>
 
-<!-- ════ SIZE SLIDER ════ -->
 <div class="sizeRow" id="sizeRow" style="display:none">
   <label>Aa</label>
   <input type="range" id="sizeSlider" min="24" max="100" value="48">
   <span id="sizeVal">48</span>
 </div>
 
-<!-- ════ MAIN DISPLAY ════ -->
 <div id="main">
   <div id="prevPhrase"></div>
   <div id="currentPhrase" class="placeholder">En attente…</div>
 </div>
 
-<!-- ════ BOTTOM BAR ════ -->
 <div id="bottomBar" style="display:none">
   <button id="btnKb">clavier</button>
   <div id="micBtn">
@@ -204,7 +209,6 @@
   <button id="btnClear">effacer</button>
 </div>
 
-<!-- ════ KEYBOARD BAR ════ -->
 <div id="kbBar">
   <input type="text" id="kbInput" placeholder="Tapez ou dictez ici…" autocomplete="off" enterkeyhint="send">
   <button id="kbSend">→</button>
@@ -212,11 +216,7 @@
 
 <script>
 (function(){
-  // ── Feature detection ──
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  var needsRestart = isIOS || isSafari;
 
   // ── State ──
   var on = false;
@@ -225,8 +225,9 @@
   var phrases = [];
   var interim = '';
   var fontSize = 48;
-  var errors = 0;
+  var restartCount = 0;
   var timer = null;
+  var watchdog = null;
 
   // ── DOM ──
   var startScreen = document.getElementById('startScreen');
@@ -241,46 +242,36 @@
   var sizeVal = document.getElementById('sizeVal');
   var kbBar = document.getElementById('kbBar');
   var kbInput = document.getElementById('kbInput');
+  var tapHint = document.getElementById('tapHint');
 
   // ── Font size ──
   function applySize(){
-    var s = fontSize;
-    currEl.style.fontSize = s + 'px';
-    prevEl.style.fontSize = Math.round(s * 0.55) + 'px';
-    sizeVal.textContent = s;
+    currEl.style.fontSize = fontSize + 'px';
+    prevEl.style.fontSize = Math.round(fontSize * 0.55) + 'px';
+    sizeVal.textContent = fontSize;
   }
   sizeSlider.addEventListener('input', function(){ fontSize = parseInt(this.value); applySize(); });
   applySize();
 
   // ══════════════════════════════
-  //  START: request mic permission
+  //  START SCREEN
   // ══════════════════════════════
 
   document.getElementById('btnStart').addEventListener('click', function(){
-    // First: request mic via getUserMedia (triggers permission popup)
     if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
       navigator.mediaDevices.getUserMedia({audio:true})
         .then(function(stream){
-          // Got permission — stop the stream immediately
           stream.getTracks().forEach(function(t){ t.stop(); });
-          enterApp();
-          startMic();
+          enterApp(); startMic();
         })
-        .catch(function(){
-          // Permission denied — try SpeechRecognition directly anyway
-          enterApp();
-          startMic();
-        });
+        .catch(function(){ enterApp(); startMic(); });
     } else {
-      // No getUserMedia — try SpeechRecognition directly
-      enterApp();
-      startMic();
+      enterApp(); startMic();
     }
   });
 
   document.getElementById('btnKeyboard').addEventListener('click', function(){
-    enterApp();
-    showKB();
+    enterApp(); showKB();
   });
 
   function enterApp(){
@@ -290,20 +281,31 @@
     sizeRow.style.display = '';
   }
 
-  // ══════════════════════════════
-  //  SPEECH RECOGNITION
-  // ══════════════════════════════
+  // ══════════════════════════════════════
+  //  SPEECH ENGINE — ROBUST AUTO-RESTART
+  // ══════════════════════════════════════
 
   function makeRec(){
     var r = new SR();
     r.lang = 'fr-FR';
     r.interimResults = true;
     r.maxAlternatives = 1;
-    r.continuous = !needsRestart;
+    // Always continuous — we handle restarts ourselves
+    r.continuous = true;
 
-    r.onstart = function(){ running = true; errors = 0; };
+    r.onstart = function(){
+      running = true;
+      restartCount = 0;
+      tapHint.classList.remove('show');
+    };
+
+    r.onaudiostart = function(){
+      // Audio is actually flowing — we're good
+      running = true;
+    };
 
     r.onresult = function(e){
+      restartCount = 0; // reset on any result
       var fin = '', tmp = '';
       for(var i = e.resultIndex; i < e.results.length; i++){
         var t = e.results[i][0].transcript;
@@ -323,47 +325,86 @@
         currEl.className = 'placeholder';
         return;
       }
-      if(on){
-        errors++;
-        if(errors < 6) restart(needsRestart ? 400 : 250);
-        else stopMic();
-      }
+      // For any other error, try to restart
+      if(on) scheduleRestart();
     };
 
     r.onend = function(){
+      // This is the KEY event — fires when recognition stops for any reason
       running = false;
       if(on){
-        if(interim && needsRestart){ phrases.push(interim); interim = ''; render(); }
-        restart(needsRestart ? 300 : 150);
+        // Commit any pending interim text
+        if(interim){
+          phrases.push(interim);
+          interim = '';
+          render();
+        }
+        scheduleRestart();
       }
     };
 
     return r;
   }
 
-  function restart(d){
+  function scheduleRestart(){
     clearTimeout(timer);
-    timer = setTimeout(function(){ if(on && !running) startEngine(); }, d);
+    restartCount++;
+
+    if(restartCount > 10){
+      // Too many restarts — need user tap (Safari limitation)
+      tapHint.classList.add('show');
+      return;
+    }
+
+    // Progressive backoff: 100ms, 200ms, 300ms...
+    var delay = Math.min(restartCount * 100, 800);
+    timer = setTimeout(function(){
+      if(on && !running) startEngine();
+    }, delay);
   }
 
   function startEngine(){
-    try{ rec = makeRec(); rec.start(); }
-    catch(e){ if(on) restart(500); }
+    // Kill any existing instance first
+    if(rec){
+      try{ rec.abort(); }catch(e){}
+      rec = null;
+    }
+    try{
+      rec = makeRec();
+      rec.start();
+    } catch(e){
+      // start() failed — probably needs user gesture on Safari
+      if(on) tapHint.classList.add('show');
+    }
   }
 
-  function stopEngine(){
-    clearTimeout(timer);
-    if(rec){ try{ rec.abort(); }catch(e){} rec = null; }
-    running = false;
+  // ── Watchdog: detect if engine died silently ──
+  function startWatchdog(){
+    clearInterval(watchdog);
+    watchdog = setInterval(function(){
+      if(on && !running){
+        scheduleRestart();
+      }
+    }, 2000);
   }
 
-  // ── Mic toggle ──
+  function stopWatchdog(){
+    clearInterval(watchdog);
+  }
+
+  // ══════════════════
+  //  MIC ON / OFF
+  // ══════════════════
+
   function startMic(){
     if(!SR){ showKB(); return; }
-    on = true; errors = 0;
+    on = true;
+    restartCount = 0;
     micBtn.classList.add('on');
     recDot.classList.add('on');
+    tapHint.classList.remove('show');
     startEngine();
+    startWatchdog();
     try{ navigator.wakeLock && navigator.wakeLock.request('screen'); }catch(e){}
   }
 
@@ -371,13 +412,33 @@
     on = false;
     micBtn.classList.remove('on');
     recDot.classList.remove('on');
-    stopEngine();
+    tapHint.classList.remove('show');
+    clearTimeout(timer);
+    stopWatchdog();
+    if(rec){ try{ rec.abort(); }catch(e){} rec = null; }
+    running = false;
     if(interim){ phrases.push(interim); interim = ''; render(); }
   }
 
-  micBtn.addEventListener('click', function(){ on ? stopMic() : startMic(); });
+  micBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    on ? stopMic() : startMic();
+  });
 
-  // ── Keyboard ──
+  // ── TAP ANYWHERE to restart (crucial for Safari) ──
+  main.addEventListener('click', function(){
+    if(kbOpen) { hideKB(); return; }
+    if(on && !running){
+      restartCount = 0;
+      tapHint.classList.remove('show');
+      startEngine();
+    }
+  });
+
+  // ══════════════════
+  //  KEYBOARD
+  // ══════════════════
+
   var kbOpen = false;
 
   function showKB(){
@@ -399,25 +460,25 @@
     kbInput.focus();
   }
 
-  document.getElementById('btnKb').addEventListener('click', showKB);
+  document.getElementById('btnKb').addEventListener('click', function(e){ e.stopPropagation(); showKB(); });
   document.getElementById('kbSend').addEventListener('click', sendKB);
-  kbInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); sendKB(); }});
-  main.addEventListener('click', function(){ if(kbOpen) hideKB(); });
+  kbInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); sendKB(); }});
 
   // ── Clear ──
-  document.getElementById('btnClear').addEventListener('click', function(){ phrases=[]; interim=''; render(); });
+  document.getElementById('btnClear').addEventListener('click', function(e){
+    e.stopPropagation();
+    phrases=[]; interim=''; render();
+  });
 
   // ══════════════════
   //  RENDER — 2 lines
   // ══════════════════
 
   function render(){
-    // Previous
     if(phrases.length >= 2 && !interim)       prevEl.textContent = phrases[phrases.length - 2];
     else if(phrases.length >= 1 && interim)    prevEl.textContent = phrases[phrases.length - 1];
     else                                       prevEl.textContent = '';
 
-    // Current
     var txt = interim || (phrases.length ? phrases[phrases.length - 1] : '');
     if(txt){
       currEl.textContent = txt;
@@ -434,9 +495,12 @@
     var n = Date.now(); if(n - lt < 300) e.preventDefault(); lt = n;
   }, {passive:false});
 
-  // ── Restart on visibility change ──
+  // ── Restart on tab return ──
   document.addEventListener('visibilitychange', function(){
-    if(document.visibilityState === 'visible' && on && !running) startEngine();
+    if(document.visibilityState === 'visible' && on && !running){
+      restartCount = 0;
+      startEngine();
+    }
   });
 })();
 </script>
