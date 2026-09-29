@@ -6,7 +6,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="KinéCom">
-<title>KinéCom</title>
+<meta name="author" content="Sébastien THORENT">
+<meta name="description" content="Outil de transcription vocale en temps réel pour la communication soignant-patient sourd ou malvoyant.">
+<title>KinéCom v1.4</title>
+<!--
+  KinéCom v1.4
+  © 2026 Sébastien THORENT — Tous droits réservés.
+  Licence : Creative Commons BY-NC-SA 4.0
+  https://creativecommons.org/licenses/by-nc-sa/4.0/
+-->
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{
@@ -28,6 +36,7 @@
   #startScreen.hidden{display:none}
   #startScreen .icon{font-size:72px}
   #startScreen h1{font-size:26px;font-weight:800}
+  #startScreen .version{color:rgba(255,255,255,0.25);font-size:11px;font-weight:600;margin-top:-12px}
   #startScreen p{color:rgba(255,255,255,0.45);font-size:15px;line-height:1.5;max-width:300px}
   #startScreen button{
     padding:18px 50px;
@@ -75,7 +84,6 @@
   #currentPhrase.interim{color:rgba(255,255,255,0.55)}
   #currentPhrase.placeholder{color:rgba(255,255,255,0.12);font-weight:600}
 
-  /* Tap to restart hint */
   #tapHint{
     position:fixed;
     top:50%;left:50%;
@@ -102,6 +110,18 @@
   }
   #recDot.on{display:block;animation:blink 1s infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+  /* ── ENGINE BADGE ── */
+  #engineBadge{
+    position:fixed;
+    top:calc(10px + env(safe-area-inset-top,0px));
+    left:50%;transform:translateX(-50%);
+    font-size:10px;font-weight:600;
+    color:rgba(255,255,255,0.2);
+    z-index:50;
+    display:none;
+    letter-spacing:0.5px;
+  }
 
   /* ── BOTTOM BAR ── */
   #bottomBar{
@@ -156,6 +176,93 @@
   }
   .sizeRow span{color:#fff;font-size:12px;font-weight:700;min-width:20px;text-align:center}
 
+  /* ── INFO BUTTON ── */
+  #infoBtn{
+    position:fixed;
+    top:calc(10px + env(safe-area-inset-top,0px));
+    right:16px;
+    width:28px;height:28px;
+    border-radius:50%;
+    border:1.5px solid rgba(255,255,255,0.12);
+    background:none;
+    color:rgba(255,255,255,0.2);
+    font-size:14px;font-weight:700;
+    display:none;
+    place-items:center;
+    cursor:pointer;
+    z-index:55;
+    transition:all 0.2s;
+    font-family:Georgia,serif;
+    font-style:italic;
+  }
+  #infoBtn:active{background:rgba(255,255,255,0.08)}
+
+  /* ── INFO PANEL ── */
+  #infoPanel{
+    position:fixed;inset:0;z-index:200;
+    background:rgba(0,0,0,0.97);
+    display:none;
+    flex-direction:column;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:calc(20px + env(safe-area-inset-top,0px)) 24px calc(20px + env(safe-area-inset-bottom,0px));
+  }
+  #infoPanel.show{display:flex}
+
+  #infoPanel .close-btn{
+    align-self:flex-end;
+    background:none;border:none;
+    color:rgba(255,255,255,0.4);
+    font-size:15px;font-weight:600;
+    cursor:pointer;padding:10px;
+    margin-bottom:10px;
+    font-family:inherit;
+  }
+  #infoPanel .close-btn:active{color:#fff}
+
+  #infoPanel h2{
+    font-size:22px;font-weight:800;
+    margin-bottom:6px;
+  }
+  #infoPanel .ver{
+    color:rgba(255,255,255,0.3);
+    font-size:12px;font-weight:600;
+    margin-bottom:24px;
+  }
+  #infoPanel h3{
+    font-size:14px;font-weight:700;
+    color:rgba(255,255,255,0.5);
+    text-transform:uppercase;
+    letter-spacing:1px;
+    margin:24px 0 10px;
+  }
+  #infoPanel p, #infoPanel li{
+    color:rgba(255,255,255,0.6);
+    font-size:14px;
+    line-height:1.7;
+  }
+  #infoPanel ul{
+    padding-left:18px;
+    margin-bottom:8px;
+  }
+  #infoPanel li{margin-bottom:4px}
+  #infoPanel a{color:rgba(255,255,255,0.5);text-decoration:underline}
+  #infoPanel .sep{
+    border:none;
+    border-top:1px solid rgba(255,255,255,0.06);
+    margin:20px 0;
+  }
+  #infoPanel .engine-status{
+    display:inline-block;
+    padding:4px 10px;
+    border-radius:6px;
+    font-size:12px;
+    font-weight:700;
+    margin-top:6px;
+  }
+  #infoPanel .engine-status.local{background:rgba(52,211,153,0.15);color:#34d399}
+  #infoPanel .engine-status.cloud{background:rgba(251,191,36,0.15);color:#fbbf24}
+
   #kbBar{
     position:fixed;bottom:0;left:0;right:0;
     display:none;
@@ -179,28 +286,43 @@
 </head>
 <body>
 
+<!-- ════ START SCREEN ════ -->
 <div id="startScreen">
   <div class="icon">🎤</div>
   <h1>KinéCom</h1>
+  <div class="version">v1.4</div>
   <p>Communication soignant → patient<br>Transcription vocale en temps réel</p>
   <button id="btnStart">Démarrer le micro</button>
   <button class="skip" id="btnKeyboard">Mode clavier</button>
+  <button class="skip" onclick="openInfo()" style="margin-top:4px">Informations et mentions légales</button>
 </div>
 
+<!-- ════ RECORDING DOT ════ -->
 <div id="recDot"></div>
+
+<!-- ════ ENGINE BADGE ════ -->
+<div id="engineBadge"></div>
+
+<!-- ════ TAP HINT ════ -->
 <div id="tapHint">Tapez l'écran pour relancer le micro</div>
 
+<!-- ════ SIZE SLIDER ════ -->
 <div class="sizeRow" id="sizeRow" style="display:none">
   <label>Aa</label>
   <input type="range" id="sizeSlider" min="24" max="100" value="48">
   <span id="sizeVal">48</span>
 </div>
 
+<!-- ════ INFO BUTTON (small ⓘ top right, shown when app is active) ════ -->
+<button id="infoBtn" onclick="openInfo()">i</button>
+
+<!-- ════ MAIN DISPLAY ════ -->
 <div id="main">
   <div id="prevPhrase"></div>
   <div id="currentPhrase" class="placeholder">En attente…</div>
 </div>
 
+<!-- ════ BOTTOM BAR ════ -->
 <div id="bottomBar" style="display:none">
   <button id="btnKb">clavier</button>
   <div id="micBtn">
@@ -209,9 +331,59 @@
   <button id="btnClear">effacer</button>
 </div>
 
+<!-- ════ KEYBOARD BAR ════ -->
 <div id="kbBar">
   <input type="text" id="kbInput" placeholder="Tapez ou dictez ici…" autocomplete="off" enterkeyhint="send">
   <button id="kbSend">→</button>
+</div>
+
+<!-- ════ INFO PANEL ════ -->
+<div id="infoPanel">
+  <button class="close-btn" onclick="closeInfo()">✕ Fermer</button>
+
+  <h2>KinéCom</h2>
+  <div class="ver">Version 1.4 — Septembre 2026</div>
+
+  <p>Outil de transcription vocale en temps réel conçu pour faciliter la communication entre soignants et patients sourds ou malvoyants.</p>
+
+  <h3>Données et vie privée</h3>
+  <p>Cette application <strong>ne collecte, ne stocke et ne transmet aucune donnée</strong>. Il n'existe aucun serveur, aucune base de données, aucun cookie, aucun traceur. Le texte affiché existe uniquement à l'écran pendant l'utilisation et disparaît à la fermeture de la page. Aucun enregistrement audio ou textuel n'est conservé.</p>
+
+  <h3>Reconnaissance vocale</h3>
+  <p>L'application utilise l'API de reconnaissance vocale intégrée au navigateur (Web Speech API). Le traitement de la voix est effectué par le fournisseur du navigateur :</p>
+  <ul>
+    <li><strong>Chrome ≥ 139 / Edge ≥ 139</strong> — mode on-device disponible : l'audio et le texte restent sur l'appareil, rien n'est transmis à l'extérieur.</li>
+    <li><strong>Chrome / Edge (versions antérieures)</strong> — l'audio est transmis aux serveurs de Google pour transcription.</li>
+    <li><strong>Safari (macOS / iOS)</strong> — l'audio est transmis aux serveurs d'Apple (Siri) pour transcription.</li>
+  </ul>
+  <p>L'application tente d'utiliser le mode on-device en priorité lorsqu'il est disponible. Le mode actif est indiqué en haut de l'écran.</p>
+  <p><strong>Recommandation :</strong> ne prononcez pas de données personnelles identifiantes du patient (nom, date de naissance, numéro de séjour) lors de l'utilisation.</p>
+
+  <p id="engineInfo" style="margin-top:12px"></p>
+
+  <hr class="sep">
+
+  <h3>Auteur et propriété</h3>
+  <p>© 2026 <strong>Sébastien THORENT</strong> — Masseur-kinésithérapeute D.E.</p>
+
+  <h3>Licence</h3>
+  <p>Cette application est diffusée sous licence <strong>Creative Commons Attribution — Pas d'utilisation commerciale — Partage dans les mêmes conditions 4.0 International (CC BY-NC-SA 4.0)</strong>.</p>
+  <p>Vous êtes libre de :</p>
+  <ul>
+    <li>Utiliser cette application librement et gratuitement</li>
+    <li>La copier et la redistribuer</li>
+    <li>La modifier et l'améliorer</li>
+  </ul>
+  <p>Sous les conditions suivantes :</p>
+  <ul>
+    <li><strong>Attribution</strong> — Vous devez créditer Sébastien THORENT comme auteur original</li>
+    <li><strong>Pas d'utilisation commerciale</strong> — Cette application ne peut être vendue ni utilisée à des fins commerciales</li>
+    <li><strong>Partage dans les mêmes conditions</strong> — Toute amélioration ou version dérivée doit être diffusée sous la même licence, en libre accès</li>
+  </ul>
+  <p><a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr" target="_blank" rel="noopener">Texte complet de la licence CC BY-NC-SA 4.0</a></p>
+
+  <hr class="sep">
+  <p style="color:rgba(255,255,255,0.2);font-size:11px;text-align:center;padding:10px 0">KinéCom v1.4 — Sébastien THORENT — 2026</p>
 </div>
 
 <script>
@@ -228,6 +400,7 @@
   var restartCount = 0;
   var timer = null;
   var watchdog = null;
+  var useOnDevice = false; // will be set if on-device is available
 
   // ── DOM ──
   var startScreen = document.getElementById('startScreen');
@@ -243,6 +416,10 @@
   var kbBar = document.getElementById('kbBar');
   var kbInput = document.getElementById('kbInput');
   var tapHint = document.getElementById('tapHint');
+  var infoBtn = document.getElementById('infoBtn');
+  var infoPanel = document.getElementById('infoPanel');
+  var engineBadge = document.getElementById('engineBadge');
+  var engineInfo = document.getElementById('engineInfo');
 
   // ── Font size ──
   function applySize(){
@@ -252,6 +429,58 @@
   }
   sizeSlider.addEventListener('input', function(){ fontSize = parseInt(this.value); applySize(); });
   applySize();
+
+  // ══════════════════════════════
+  //  INFO PANEL
+  // ══════════════════════════════
+
+  window.openInfo = function(){
+    // Update engine status in panel
+    updateEngineInfo();
+    infoPanel.classList.add('show');
+  };
+  window.closeInfo = function(){
+    infoPanel.classList.remove('show');
+  };
+
+  function updateEngineInfo(){
+    if(useOnDevice){
+      engineInfo.innerHTML = 'Mode actuel : <span class="engine-status local">ON-DEVICE (local)</span><br><small style="color:rgba(255,255,255,0.35)">L\'audio ne quitte pas votre appareil.</small>';
+    } else if(SR) {
+      var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      var provider = isSafari ? 'Apple (Siri)' : 'Google';
+      engineInfo.innerHTML = 'Mode actuel : <span class="engine-status cloud">CLOUD (' + provider + ')</span><br><small style="color:rgba(255,255,255,0.35)">L\'audio est traité par les serveurs de ' + provider + '.</small>';
+    } else {
+      engineInfo.innerHTML = '<span style="color:rgba(255,255,255,0.3)">Reconnaissance vocale non disponible sur ce navigateur.</span>';
+    }
+  }
+
+  // ══════════════════════════════
+  //  ON-DEVICE DETECTION
+  // ══════════════════════════════
+
+  // Chrome 139+ supports on-device speech recognition
+  // We check by looking for the ondevice property or trying to set it
+  function checkOnDevice(){
+    if(!SR) return;
+    try{
+      var test = new SR();
+      // Chrome 139+ adds a 'mode' property or 'ondevice' option
+      if('mode' in test || 'ondevice' in test){
+        useOnDevice = true;
+      }
+      // Alternative detection: check if SpeechRecognition has availableOnDevice method
+      if(typeof SR.availableOnDevice === 'function'){
+        useOnDevice = true;
+      }
+    }catch(e){}
+
+    if(useOnDevice){
+      engineBadge.textContent = '● ON-DEVICE';
+      engineBadge.style.color = 'rgba(52,211,153,0.4)';
+    }
+  }
+  checkOnDevice();
 
   // ══════════════════════════════
   //  START SCREEN
@@ -279,6 +508,8 @@
     main.classList.add('visible');
     bottomBar.style.display = '';
     sizeRow.style.display = '';
+    infoBtn.style.display = 'grid';
+    engineBadge.style.display = '';
   }
 
   // ══════════════════════════════════════
@@ -290,8 +521,15 @@
     r.lang = 'fr-FR';
     r.interimResults = true;
     r.maxAlternatives = 1;
-    // Always continuous — we handle restarts ourselves
     r.continuous = true;
+
+    // Try to enable on-device mode if available
+    if(useOnDevice){
+      try{
+        if('mode' in r) r.mode = 'ondevice';
+        if('ondevice' in r) r.ondevice = true;
+      }catch(e){}
+    }
 
     r.onstart = function(){
       running = true;
@@ -300,12 +538,11 @@
     };
 
     r.onaudiostart = function(){
-      // Audio is actually flowing — we're good
       running = true;
     };
 
     r.onresult = function(e){
-      restartCount = 0; // reset on any result
+      restartCount = 0;
       var fin = '', tmp = '';
       for(var i = e.resultIndex; i < e.results.length; i++){
         var t = e.results[i][0].transcript;
@@ -325,15 +562,12 @@
         currEl.className = 'placeholder';
         return;
       }
-      // For any other error, try to restart
       if(on) scheduleRestart();
     };
 
     r.onend = function(){
-      // This is the KEY event — fires when recognition stops for any reason
       running = false;
       if(on){
-        // Commit any pending interim text
         if(interim){
           phrases.push(interim);
           interim = '';
@@ -349,14 +583,10 @@
   function scheduleRestart(){
     clearTimeout(timer);
     restartCount++;
-
     if(restartCount > 10){
-      // Too many restarts — need user tap (Safari limitation)
       tapHint.classList.add('show');
       return;
     }
-
-    // Progressive backoff: 100ms, 200ms, 300ms...
     var delay = Math.min(restartCount * 100, 800);
     timer = setTimeout(function(){
       if(on && !running) startEngine();
@@ -364,27 +594,31 @@
   }
 
   function startEngine(){
-    // Kill any existing instance first
     if(rec){
       try{ rec.abort(); }catch(e){}
       rec = null;
     }
+    running = false;
     try{
       rec = makeRec();
       rec.start();
     } catch(e){
-      // start() failed — probably needs user gesture on Safari
-      if(on) tapHint.classList.add('show');
+      setTimeout(function(){
+        if(!on) return;
+        try{
+          rec = makeRec();
+          rec.start();
+        } catch(e2){
+          if(on) tapHint.classList.add('show');
+        }
+      }, 300);
     }
   }
 
-  // ── Watchdog: detect if engine died silently ──
   function startWatchdog(){
     clearInterval(watchdog);
     watchdog = setInterval(function(){
-      if(on && !running){
-        scheduleRestart();
-      }
+      if(on && !running) scheduleRestart();
     }, 2000);
   }
 
@@ -396,8 +630,14 @@
   //  MIC ON / OFF
   // ══════════════════
 
+  var stopping = false;
+
   function startMic(){
     if(!SR){ showKB(); return; }
+    if(stopping){
+      setTimeout(function(){ startMic(); }, 400);
+      return;
+    }
     on = true;
     restartCount = 0;
     micBtn.classList.add('on');
@@ -410,6 +650,7 @@
 
   function stopMic(){
     on = false;
+    stopping = true;
     micBtn.classList.remove('on');
     recDot.classList.remove('on');
     tapHint.classList.remove('show');
@@ -418,6 +659,7 @@
     if(rec){ try{ rec.abort(); }catch(e){} rec = null; }
     running = false;
     if(interim){ phrases.push(interim); interim = ''; render(); }
+    setTimeout(function(){ stopping = false; }, 350);
   }
 
   micBtn.addEventListener('click', function(e){
@@ -425,7 +667,7 @@
     on ? stopMic() : startMic();
   });
 
-  // ── TAP ANYWHERE to restart (crucial for Safari) ──
+  // ── TAP ANYWHERE to restart ──
   main.addEventListener('click', function(){
     if(kbOpen) { hideKB(); return; }
     if(on && !running){
